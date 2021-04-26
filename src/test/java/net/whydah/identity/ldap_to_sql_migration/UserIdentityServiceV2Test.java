@@ -64,7 +64,7 @@ public class UserIdentityServiceV2Test {
         configuration = new ConstrettoBuilder()
                 .createPropertiesStore()
                 .addResource(Resource.create("classpath:useridentitybackend.properties"))
-                .addResource(Resource.create("classpath:useridentitybackend-test-override.properties"))
+                .addResource(Resource.create("classpath:useridentitybackend-test.properties"))
                 .done()
                 .getConfiguration();
 
