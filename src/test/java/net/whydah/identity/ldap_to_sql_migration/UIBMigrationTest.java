@@ -20,7 +20,6 @@ import org.junit.Test;
 
 import javax.naming.NamingException;
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -44,7 +43,7 @@ public class UIBMigrationTest {
     private static RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao;
 
     @BeforeClass
-    public static void setUp() throws IOException {
+    public static void setUp() {
         FileUtils.deleteDirectory(new File(ldapPath));
 
         ApplicationMode.setCIMode();
@@ -73,26 +72,12 @@ public class UIBMigrationTest {
 
         ldapUserIdentityDao = new LdapUserIdentityDao(primaryLdapUrl, primaryAdmPrincipal, primaryAdmCredentials, primaryUidAttribute, primaryUsernameAttribute, readonly);
 
-        BasicDataSource dataSource = initBasicDataSource(configuration);
+        BasicDataSource dataSource = UIBMigration.initBasicDataSource(configuration);
         DatabaseMigrationHelper dbHelper = new DatabaseMigrationHelper(dataSource);
         dbHelper.cleanDatabase();
         dbHelper.upgradeDatabase();
 
         rdbmsLdapUserIdentityDao = new RDBMSLdapUserIdentityDao(dataSource);
-    }
-
-    private static BasicDataSource initBasicDataSource(ConstrettoConfiguration configuration) {
-        String jdbcdriver = configuration.evaluateToString("roledb.jdbc.driver");
-        String jdbcurl = configuration.evaluateToString("roledb.jdbc.url");
-        String roledbuser = configuration.evaluateToString("roledb.jdbc.user");
-        String roledbpasswd = configuration.evaluateToString("roledb.jdbc.password");
-
-        BasicDataSource dataSource = new BasicDataSource();
-        dataSource.setDriverClassName(jdbcdriver);
-        dataSource.setUrl(jdbcurl);
-        dataSource.setUsername(roledbuser);
-        dataSource.setPassword(roledbpasswd);
-        return dataSource;
     }
 
     @AfterClass
