@@ -1,0 +1,6 @@
+#userId, username, password, firstName, lastName, email, cellPhone, personRef
+erik.drolshammer.uid, erikd, secretPw, Erik, Drolshammer, erik.drolshammer@altran.com, +47123456, 2
+useradmin.uid, useradmin, useradmin42, User, Admin, useradmin@getwhydah.com, +1555406789, 0
+test.me.uid, testMe, testMe1234, test, meLastname, test.me@example.com, +47123456789, 0
+change.me.uid, changeMe, changeMe1234, change, meLastname, test.me@example.com, +47123456789, 0
+systest.uid, systest, systest42, UserAdmin, UserAdminWebApp, whydahadmin@getwhydah.com,+1555406789,42
