@@ -115,10 +115,12 @@ public class UIBMigrationTest {
 
         UIBMigration uibMigration = new UIBMigration(ldapUserIdentityDao, rdbmsLdapUserIdentityDao);
 
+        //uibMigration.migrateDryRun();
         uibMigration.migrate();
 
         System.out.printf("USERS IN SQL AFTER MIGRATION:%n");
         List<RDBMSUserIdentity> rdbmsUserIdentities = rdbmsLdapUserIdentityDao.allUsersList();
+        assertEquals(ldapUserByUid.size(), rdbmsUserIdentities.size());
         for (RDBMSUserIdentity rdbmsUserIdentity : rdbmsUserIdentities) {
             System.out.printf("USER: %s ==::== PASS: '%s'%n", rdbmsUserIdentity.toString(), rdbmsUserIdentity.getPassword());
             LDAPUserIdentity ldapUserIdentity = ldapUserByUid.get(rdbmsUserIdentity.getUid());

@@ -6,6 +6,7 @@ import net.whydah.identity.user.identity.RDBMSLdapUserIdentityDao;
 import net.whydah.identity.user.identity.RDBMSUserIdentity;
 
 import javax.naming.NamingException;
+import java.util.function.Consumer;
 
 public class UIBMigration {
 
@@ -22,11 +23,21 @@ public class UIBMigration {
     }
 
     public void migrate() {
+        doMigrate(rdbmsLdapUserIdentityDao::create);
+    }
+
+    public void migrateDryRun() {
+        doMigrate(rdbmsUserIdentity -> {
+        });
+    }
+
+    private void doMigrate(Consumer<RDBMSUserIdentity> writeCallback) {
         try {
             System.out.printf("MIGRATION LDAP -> SQL%n");
             for (LDAPUserIdentity ldapUserIdentity : ldapUserIdentityDao.allUsersWithPassword()) {
                 System.out.printf("USER: %s ==::== PASS: '%s'%n", ldapUserIdentity.toString(), ldapUserIdentity.getPassword());
-                rdbmsLdapUserIdentityDao.create(toRDBMSUserIdentity(ldapUserIdentity));
+                RDBMSUserIdentity rdbmsUserIdentity = toRDBMSUserIdentity(ldapUserIdentity);
+                writeCallback.accept(rdbmsUserIdentity);
             }
         } catch (NamingException e) {
             throw new RuntimeException(e);
