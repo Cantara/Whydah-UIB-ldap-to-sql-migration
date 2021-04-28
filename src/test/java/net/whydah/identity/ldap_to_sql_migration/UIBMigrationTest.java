@@ -98,10 +98,10 @@ public class UIBMigrationTest {
                 .stream(Spliterators.spliteratorUnknownSize(ldapUserIdentityDao.allUsersWithPassword().iterator(), Spliterator.ORDERED), false)
                 .collect(Collectors.toMap(LDAPUserIdentity::getUid, i -> i));
 
-        UIBMigration uibMigration = new UIBMigration(ldapUserIdentityDao, rdbmsLdapUserIdentityDao);
+        UIBMigration uibMigration = new UIBMigration(ldapUserIdentityDao, rdbmsLdapUserIdentityDao, false, Integer.MAX_VALUE, true);
 
-        //uibMigration.migrateDryRun(Integer.MAX_VALUE);
-        uibMigration.migrate(Integer.MAX_VALUE);
+        //uibMigration.migrateDryRun();
+        uibMigration.migrate();
 
         System.out.printf("USERS IN SQL AFTER MIGRATION:%n");
         List<RDBMSUserIdentity> rdbmsUserIdentities = rdbmsLdapUserIdentityDao.allUsersList();
