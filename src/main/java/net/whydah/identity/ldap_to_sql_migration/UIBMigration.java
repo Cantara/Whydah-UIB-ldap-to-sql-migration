@@ -42,16 +42,24 @@ public class UIBMigration {
         UIBMigration uibMigration = new UIBMigration(ldapUserIdentityDao, rdbmsLdapUserIdentityDao);
 
         boolean dryRun = false;
-        for (String arg : args) {
-            if ("--dry-run".equalsIgnoreCase(arg)) {
+        int maxUsersToMigrate = Integer.MAX_VALUE;
+        for (int i = 0; i < args.length; i++) {
+            if ("--dry-run".equalsIgnoreCase(args[i])) {
                 dryRun = true;
+            }
+            if ("-n".equalsIgnoreCase(args[i])) {
+                if ((i + 1) < args.length) {
+                    maxUsersToMigrate = Integer.parseInt(args[i + 1]);
+                }
             }
         }
 
         if (dryRun) {
-            uibMigration.migrateDryRun();
+            System.out.printf("Migration (dry-run) started with maxUsers=%d%n", maxUsersToMigrate);
+            uibMigration.migrateDryRun(maxUsersToMigrate);
         } else {
-            uibMigration.migrate();
+            System.out.printf("Migration started with maxUsers=%d%n", maxUsersToMigrate);
+            uibMigration.migrate(maxUsersToMigrate);
         }
     }
 
@@ -77,22 +85,27 @@ public class UIBMigration {
         this.rdbmsLdapUserIdentityDao = rdbmsLdapUserIdentityDao;
     }
 
-    public void migrate() {
-        doMigrate(rdbmsLdapUserIdentityDao::create);
+    public void migrate(int maxUsersToMigrate) {
+        doMigrate(maxUsersToMigrate, rdbmsLdapUserIdentityDao::create);
     }
 
-    public void migrateDryRun() {
-        doMigrate(rdbmsUserIdentity -> {
+    public void migrateDryRun(int maxUsersToMigrate) {
+        doMigrate(maxUsersToMigrate, rdbmsUserIdentity -> {
         });
     }
 
-    private void doMigrate(Consumer<RDBMSUserIdentity> writeCallback) {
+    private void doMigrate(int maxUsersToMigrate, Consumer<RDBMSUserIdentity> writeCallback) {
         try {
             System.out.printf("MIGRATION LDAP -> SQL%n");
+            int i = 0;
             for (LDAPUserIdentity ldapUserIdentity : ldapUserIdentityDao.allUsersWithPassword()) {
+                if (i >= maxUsersToMigrate) {
+                    break;
+                }
                 System.out.printf("USER: %s ==::== PASS: '%s'%n", ldapUserIdentity.toString(), ldapUserIdentity.getPassword());
                 RDBMSUserIdentity rdbmsUserIdentity = toRDBMSUserIdentity(ldapUserIdentity);
                 writeCallback.accept(rdbmsUserIdentity);
+                i++;
             }
         } catch (NamingException e) {
             throw new RuntimeException(e);
