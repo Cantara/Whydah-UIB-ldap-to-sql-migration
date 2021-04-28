@@ -14,7 +14,28 @@ import java.util.function.Consumer;
 
 public class UIBMigration {
 
+    static String usage() {
+        return "Usage: java -jar uib-ldap-to-sql-migration.jar [--dry-run] [-n <maxUsersToMigrate>]";
+    }
+
     public static void main(String[] args) {
+        boolean dryRun = false;
+        int maxUsersToMigrate = Integer.MAX_VALUE;
+        for (int i = 0; i < args.length; i++) {
+            if ("--dry-run".equalsIgnoreCase(args[i])) {
+                dryRun = true;
+            }
+            if ("-n".equalsIgnoreCase(args[i])) {
+                if ((i + 1) < args.length) {
+                    maxUsersToMigrate = Integer.parseInt(args[i + 1]);
+                    i++;
+                } else {
+                    System.out.printf("%s%n", usage());
+                    return;
+                }
+            }
+        }
+
         final ConstrettoConfiguration config = new ConstrettoBuilder()
                 .createPropertiesStore()
                 .addResource(Resource.create("classpath:useridentitybackend.properties"))
@@ -36,19 +57,6 @@ public class UIBMigration {
         RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao = new RDBMSLdapUserIdentityDao(dataSource);
 
         UIBMigration uibMigration = new UIBMigration(ldapUserIdentityDao, rdbmsLdapUserIdentityDao);
-
-        boolean dryRun = false;
-        int maxUsersToMigrate = Integer.MAX_VALUE;
-        for (int i = 0; i < args.length; i++) {
-            if ("--dry-run".equalsIgnoreCase(args[i])) {
-                dryRun = true;
-            }
-            if ("-n".equalsIgnoreCase(args[i])) {
-                if ((i + 1) < args.length) {
-                    maxUsersToMigrate = Integer.parseInt(args[i + 1]);
-                }
-            }
-        }
 
         if (dryRun) {
             System.out.printf("Migration (dry-run) started with maxUsers=%d%n", maxUsersToMigrate);
