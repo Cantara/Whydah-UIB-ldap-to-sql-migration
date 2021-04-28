@@ -52,9 +52,11 @@ public class UIBMigration {
 
         LdapUserIdentityDao ldapUserIdentityDao = new LdapUserIdentityDao(primaryLdapUrl, primaryAdmPrincipal, primaryAdmCredentials, primaryUidAttribute, primaryUsernameAttribute, readonly);
 
-        BasicDataSource dataSource = initBasicDataSource(config);
-
-        RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao = new RDBMSLdapUserIdentityDao(dataSource);
+        RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao = null;
+        if (!dryRun) {
+            BasicDataSource dataSource = initBasicDataSource(config);
+            rdbmsLdapUserIdentityDao = new RDBMSLdapUserIdentityDao(dataSource);
+        }
 
         UIBMigration uibMigration = new UIBMigration(ldapUserIdentityDao, rdbmsLdapUserIdentityDao);
 
