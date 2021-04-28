@@ -1,6 +1,5 @@
 package net.whydah.identity.ldap_to_sql_migration;
 
-import net.whydah.identity.dataimport.DatabaseMigrationHelper;
 import net.whydah.identity.user.identity.LDAPUserIdentity;
 import net.whydah.identity.user.identity.LdapUserIdentityDao;
 import net.whydah.identity.user.identity.RDBMSLdapUserIdentityDao;
@@ -33,9 +32,6 @@ public class UIBMigration {
         LdapUserIdentityDao ldapUserIdentityDao = new LdapUserIdentityDao(primaryLdapUrl, primaryAdmPrincipal, primaryAdmCredentials, primaryUidAttribute, primaryUsernameAttribute, readonly);
 
         BasicDataSource dataSource = initBasicDataSource(config);
-        DatabaseMigrationHelper dbHelper = new DatabaseMigrationHelper(dataSource);
-        dbHelper.cleanDatabase();
-        dbHelper.upgradeDatabase();
 
         RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao = new RDBMSLdapUserIdentityDao(dataSource);
 
