@@ -10,17 +10,17 @@ import org.constretto.ConstrettoConfiguration;
 import org.constretto.model.Resource;
 
 import javax.naming.NamingException;
-import java.util.function.Consumer;
 
 public class UIBMigration {
 
     static String usage() {
-        return "Usage: java -jar uib-ldap-to-sql-migration.jar [--dry-run] [-n <maxUsersToMigrate>]";
+        return "Usage: java -jar uib-ldap-to-sql-migration.jar [--dry-run] [--print-passwords] [-n <maxUsersToMigrate>]";
     }
 
     public static void main(String[] args) {
         boolean dryRun = false;
         int maxUsersToMigrate = Integer.MAX_VALUE;
+        boolean printPasswords = false;
         for (int i = 0; i < args.length; i++) {
             if ("--dry-run".equalsIgnoreCase(args[i])) {
                 dryRun = true;
@@ -34,7 +34,12 @@ public class UIBMigration {
                     return;
                 }
             }
+            if ("--print-passwords".equalsIgnoreCase(args[i])) {
+                printPasswords = true;
+            }
         }
+
+        System.out.printf("UIB LDAP -> SQL migration started with options: dry-run=%s, maxUsers=%d, print-passwords=%s%n", dryRun, maxUsersToMigrate, printPasswords);
 
         final ConstrettoConfiguration config = new ConstrettoBuilder()
                 .createPropertiesStore()
@@ -58,15 +63,9 @@ public class UIBMigration {
             rdbmsLdapUserIdentityDao = new RDBMSLdapUserIdentityDao(dataSource);
         }
 
-        UIBMigration uibMigration = new UIBMigration(ldapUserIdentityDao, rdbmsLdapUserIdentityDao);
+        UIBMigration uibMigration = new UIBMigration(ldapUserIdentityDao, rdbmsLdapUserIdentityDao, dryRun, maxUsersToMigrate, printPasswords);
 
-        if (dryRun) {
-            System.out.printf("Migration (dry-run) started with maxUsers=%d%n", maxUsersToMigrate);
-            uibMigration.migrateDryRun(maxUsersToMigrate);
-        } else {
-            System.out.printf("Migration started with maxUsers=%d%n", maxUsersToMigrate);
-            uibMigration.migrate(maxUsersToMigrate);
-        }
+        uibMigration.migrate(); // run LDAP -> SQL migration
     }
 
     static BasicDataSource initBasicDataSource(ConstrettoConfiguration configuration) {
@@ -86,21 +85,19 @@ public class UIBMigration {
     private final LdapUserIdentityDao ldapUserIdentityDao;
     private final RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao;
 
-    public UIBMigration(LdapUserIdentityDao ldapUserIdentityDao, RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao) {
+    final boolean dryRun;
+    final int maxUsersToMigrate;
+    final boolean printPasswords;
+
+    public UIBMigration(LdapUserIdentityDao ldapUserIdentityDao, RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao, boolean dryRun, int maxUsersToMigrate, boolean printPasswords) {
         this.ldapUserIdentityDao = ldapUserIdentityDao;
         this.rdbmsLdapUserIdentityDao = rdbmsLdapUserIdentityDao;
+        this.dryRun = dryRun;
+        this.maxUsersToMigrate = maxUsersToMigrate;
+        this.printPasswords = printPasswords;
     }
 
-    public void migrate(int maxUsersToMigrate) {
-        doMigrate(maxUsersToMigrate, rdbmsLdapUserIdentityDao::create);
-    }
-
-    public void migrateDryRun(int maxUsersToMigrate) {
-        doMigrate(maxUsersToMigrate, rdbmsUserIdentity -> {
-        });
-    }
-
-    private void doMigrate(int maxUsersToMigrate, Consumer<RDBMSUserIdentity> writeCallback) {
+    public void migrate() {
         try {
             System.out.printf("MIGRATION LDAP -> SQL%n");
             int i = 0;
@@ -108,9 +105,15 @@ public class UIBMigration {
                 if (i >= maxUsersToMigrate) {
                     break;
                 }
-                System.out.printf("USER: %s ==::== PASS: '%s'%n", ldapUserIdentity.toString(), ldapUserIdentity.getPassword());
-                RDBMSUserIdentity rdbmsUserIdentity = toRDBMSUserIdentity(ldapUserIdentity);
-                writeCallback.accept(rdbmsUserIdentity);
+                if (printPasswords) {
+                    System.out.printf("USER: %s ==::== PASS: '%s'%n", ldapUserIdentity, ldapUserIdentity.getPassword());
+                } else {
+                    System.out.printf("USER: %s%n", ldapUserIdentity);
+                }
+                if (!dryRun) {
+                    RDBMSUserIdentity rdbmsUserIdentity = toRDBMSUserIdentity(ldapUserIdentity);
+                    rdbmsLdapUserIdentityDao.create(rdbmsUserIdentity);
+                }
                 i++;
             }
         } catch (NamingException e) {
