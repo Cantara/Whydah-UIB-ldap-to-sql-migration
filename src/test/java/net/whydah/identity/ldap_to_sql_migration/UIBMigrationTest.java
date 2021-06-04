@@ -9,6 +9,7 @@ import net.whydah.identity.user.identity.BCryptService;
 import net.whydah.identity.user.identity.LDAPUserIdentity;
 import net.whydah.identity.user.identity.LdapUserIdentityDao;
 import net.whydah.identity.user.identity.RDBMSLdapUserIdentityDao;
+import net.whydah.identity.user.identity.RDBMSLdapUserIdentityRepository;
 import net.whydah.identity.user.identity.RDBMSUserIdentity;
 import net.whydah.identity.user.identity.UserIdentityConverter;
 import net.whydah.identity.util.FileUtils;
@@ -36,14 +37,15 @@ import static org.junit.Assert.assertTrue;
 
 public class UIBMigrationTest {
 
-    private static final String ldapPath = "target/LdapUIBUserIdentityDaoTest/ldap";
-    private static Main main = null;
+    static final String ldapPath = "target/LdapUIBUserIdentityDaoTest/ldap";
+    static Main main = null;
 
-    private static ConstrettoConfiguration configuration;
-    private static LdapUserIdentityDao ldapUserIdentityDao;
-    private static RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao;
-    private static BCryptService bCryptService;
-    private static UserIdentityConverter converter;
+    static ConstrettoConfiguration configuration;
+    static LdapUserIdentityDao ldapUserIdentityDao;
+    static RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao;
+    static BCryptService bCryptService;
+    static RDBMSLdapUserIdentityRepository rdbmsLdapUserIdentityRepository;
+    static UserIdentityConverter converter;
 
     @BeforeClass
     public static void setUp() {
@@ -81,8 +83,9 @@ public class UIBMigrationTest {
         dbHelper.upgradeDatabase();
 
         rdbmsLdapUserIdentityDao = new RDBMSLdapUserIdentityDao(dataSource);
-
         bCryptService = new BCryptService(configuration.evaluateToString("userdb.password.pepper"), configuration.evaluateToInt("userdb.password.bcrypt.preferredcost"));
+        rdbmsLdapUserIdentityRepository = new RDBMSLdapUserIdentityRepository(rdbmsLdapUserIdentityDao, bCryptService, configuration);
+
         converter = new UserIdentityConverter(bCryptService);
     }
 
@@ -108,16 +111,24 @@ public class UIBMigrationTest {
 
         //uibMigration.migrateDryRun();
         uibMigration.migrate();
+        uibMigration.migrate();
 
         System.out.printf("USERS IN SQL AFTER MIGRATION:%n");
         List<RDBMSUserIdentity> rdbmsUserIdentities = rdbmsLdapUserIdentityDao.allUsersList();
         assertEquals(ldapUserByUid.size(), rdbmsUserIdentities.size());
         for (RDBMSUserIdentity rdbmsUserIdentity : rdbmsUserIdentities) {
-            System.out.printf("USER: %s ==::== PASS: '%s'%n", rdbmsUserIdentity.toString(), rdbmsUserIdentity.getPassword());
+            String password = rdbmsUserIdentity.getPasswordBCrypt();
+            if (password == null) {
+                password = rdbmsUserIdentity.getPassword(); // not bcrypt, probably plaintext
+            }
+            System.out.printf("USER: %s ==::== PASS: '%s'%n", rdbmsUserIdentity, password);
             LDAPUserIdentity ldapUserIdentity = ldapUserByUid.get(rdbmsUserIdentity.getUid());
             assertNotNull(ldapUserIdentity);
             RDBMSUserIdentity copy = converter.convertFromLDAPUserIdentity(ldapUserIdentity);
             assertEquals(copy, rdbmsUserIdentity);
+            RDBMSUserIdentity authenticatedUser = rdbmsLdapUserIdentityRepository.authenticate(ldapUserIdentity.getUsername(), ldapUserIdentity.getPassword());
+            assertNotNull(authenticatedUser);
+            assertEquals(rdbmsUserIdentity, authenticatedUser);
         }
     }
 
