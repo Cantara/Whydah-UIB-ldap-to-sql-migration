@@ -137,10 +137,13 @@ public class UIBMigration {
                     if (i >= maxUsersToMigrate) {
                         break;
                     }
-                    RDBMSUserIdentity existingIdentity = rdbmsLdapUserIdentityDao.get(ldapUserIdentity.getUid());
-                    if (existingIdentity != null) {
-                        System.out.printf("#%d Skipping USER: %s%n", i, ldapUserIdentity);
-                        continue;
+                    if (!dryRun) {
+                        String uid = ldapUserIdentity.getUid();
+                        RDBMSUserIdentity existingIdentity = rdbmsLdapUserIdentityDao.get(uid);
+                        if (existingIdentity != null) {
+                            System.out.printf("#%d Skipping USER: %s%n", i, ldapUserIdentity);
+                            continue;
+                        }
                     }
                     if (printPasswords) {
                         System.out.printf("#%d USER: %s ==::== PASS: '%s'%n", i, ldapUserIdentity, ldapUserIdentity.getPassword());
