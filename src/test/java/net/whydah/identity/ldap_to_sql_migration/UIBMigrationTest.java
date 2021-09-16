@@ -111,7 +111,6 @@ public class UIBMigrationTest {
 
         //uibMigration.migrateDryRun();
         uibMigration.migrate();
-        uibMigration.migrate();
 
         System.out.printf("USERS IN SQL AFTER MIGRATION:%n");
         List<RDBMSUserIdentity> rdbmsUserIdentities = rdbmsLdapUserIdentityDao.allUsersList();
