@@ -128,6 +128,7 @@ public class UIBMigration {
     final BlockingQueue<LDAPUserIdentity> queue = new ArrayBlockingQueue<>(40);
     final LDAPUserIdentity ENDSIGNAL = new LDAPUserIdentity("__END_LDAP_USER_IDENTITY__", "END", "END", "END", "end@end.com", "s3cr3t", "12345678", "END");
     final AtomicInteger migrationCount = new AtomicInteger();
+    final AtomicInteger skippedCount = new AtomicInteger();
     final AtomicBoolean stop = new AtomicBoolean();
 
 
@@ -172,6 +173,10 @@ public class UIBMigration {
                 queue.put(ENDSIGNAL);
             }
             finishedWorkers.await(60, TimeUnit.MINUTES);
+            System.out.printf("Attempted to migrate %d users.%n", migrationCount.get());
+            if (skippedCount.get() > 0) {
+                System.out.printf("Skipped users: %d%n", skippedCount.get());
+            }
         } catch (NamingException | InterruptedException e) {
             throw new RuntimeException(e);
         }
@@ -218,7 +223,8 @@ public class UIBMigration {
                             String uid = ldapUserIdentity.getUid();
                             RDBMSUserIdentity existingIdentity = rdbmsLdapUserIdentityDao.get(uid);
                             if (existingIdentity != null) {
-                                System.out.printf("#%d Skipping USER: %s%n", i, ldapUserIdentity);
+                                skippedCount.incrementAndGet();
+                                // System.out.printf("#%d Skipping USER: %s%n", i, ldapUserIdentity);
                                 continue;
                             }
                         }
