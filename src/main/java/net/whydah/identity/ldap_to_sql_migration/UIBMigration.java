@@ -2,7 +2,6 @@ package net.whydah.identity.ldap_to_sql_migration;
 
 import net.whydah.identity.user.identity.BCryptService;
 import net.whydah.identity.user.identity.LDAPUserIdentity;
-import net.whydah.identity.user.identity.LdapUserIdentityDao;
 import net.whydah.identity.user.identity.RDBMSLdapUserIdentityDao;
 import net.whydah.identity.user.identity.RDBMSUserIdentity;
 import net.whydah.identity.user.identity.UserIdentityConverter;
@@ -12,6 +11,13 @@ import org.constretto.ConstrettoConfiguration;
 import org.constretto.model.Resource;
 
 import javax.naming.NamingException;
+import java.util.Iterator;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class UIBMigration {
 
@@ -70,9 +76,8 @@ public class UIBMigration {
             String primaryAdmCredentials = config.evaluateToString("ldap.primary.admin.credentials");
             String primaryUidAttribute = config.evaluateToString("ldap.primary.uid.attribute");
             String primaryUsernameAttribute = config.evaluateToString("ldap.primary.username.attribute");
-            String readonly = config.evaluateToString("ldap.primary.readonly");
 
-            LdapUserIdentityDao ldapUserIdentityDao = new LdapUserIdentityDao(primaryLdapUrl, primaryAdmPrincipal, primaryAdmCredentials, primaryUidAttribute, primaryUsernameAttribute, readonly);
+            MigrationLdapUserIdentityDao ldapUserIdentityDao = new MigrationLdapUserIdentityDao(primaryLdapUrl, primaryAdmPrincipal, primaryAdmCredentials, primaryUidAttribute, primaryUsernameAttribute, new Mapper());
 
             RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao = null;
             if (!dryRun) {
@@ -110,15 +115,23 @@ public class UIBMigration {
         return dataSource;
     }
 
-    private final LdapUserIdentityDao ldapUserIdentityDao;
+    private final MigrationLdapUserIdentityDao ldapUserIdentityDao;
     private final RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao;
     private final UserIdentityConverter converter;
 
     final boolean dryRun;
     final int maxUsersToMigrate;
     final boolean printPasswords;
+    final int N_THREADS = 8;
+    final CountDownLatch finishedWorkers = new CountDownLatch(N_THREADS);
 
-    public UIBMigration(LdapUserIdentityDao ldapUserIdentityDao, RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao, BCryptService bCryptService, boolean dryRun, int maxUsersToMigrate, boolean printPasswords) {
+    final BlockingQueue<LDAPUserIdentity> queue = new ArrayBlockingQueue<>(40);
+    final LDAPUserIdentity ENDSIGNAL = new LDAPUserIdentity("__END_LDAP_USER_IDENTITY__", "END", "END", "END", "end@end.com", "s3cr3t", "12345678", "END");
+    final AtomicInteger migrationCount = new AtomicInteger();
+    final AtomicBoolean stop = new AtomicBoolean();
+
+
+    public UIBMigration(MigrationLdapUserIdentityDao ldapUserIdentityDao, RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao, BCryptService bCryptService, boolean dryRun, int maxUsersToMigrate, boolean printPasswords) {
         this.ldapUserIdentityDao = ldapUserIdentityDao;
         this.rdbmsLdapUserIdentityDao = rdbmsLdapUserIdentityDao;
         this.converter = new UserIdentityConverter(bCryptService);
@@ -129,36 +142,37 @@ public class UIBMigration {
 
     public void migrate() {
         try {
+            for (int i = 0; i < N_THREADS; i++) {
+                new Thread(new MigrationWorker(), "migrate-" + i).start();
+            }
             System.out.printf("MIGRATION LDAP -> SQL%n");
-            int i = 0;
-            Iterable<LDAPUserIdentity> ldapUserIdentitiesIterator = ldapUserIdentityDao.allUsersWithPassword();
-            for (LDAPUserIdentity ldapUserIdentity : ldapUserIdentitiesIterator) {
+            Iterator<LDAPUserIdentity> ldapUserIdentitiesIterator = ldapUserIdentityDao.allUsersWithPassword().iterator();
+            int count = 0;
+            while (ldapUserIdentitiesIterator.hasNext()) {
+                LDAPUserIdentity ldapUserIdentity;
                 try {
-                    if (i >= maxUsersToMigrate) {
+                    ldapUserIdentity = ldapUserIdentitiesIterator.next();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    continue;
+                }
+                try {
+                    if (count >= maxUsersToMigrate) {
                         break;
                     }
-                    if (!dryRun) {
-                        String uid = ldapUserIdentity.getUid();
-                        RDBMSUserIdentity existingIdentity = rdbmsLdapUserIdentityDao.get(uid);
-                        if (existingIdentity != null) {
-                            System.out.printf("#%d Skipping USER: %s%n", i, ldapUserIdentity);
-                            continue;
-                        }
+                    if (stop.get()) {
+                        break;
                     }
-                    if (printPasswords) {
-                        System.out.printf("#%d USER: %s ==::== PASS: '%s'%n", i, ldapUserIdentity, ldapUserIdentity.getPassword());
-                    } else {
-                        System.out.printf("#%d USER: %s%n", i, ldapUserIdentity);
-                    }
-                    if (!dryRun) {
-                        RDBMSUserIdentity rdbmsUserIdentity = converter.convertFromLDAPUserIdentity(ldapUserIdentity);
-                        rdbmsLdapUserIdentityDao.create(rdbmsUserIdentity);
-                    }
+                    queue.put(ldapUserIdentity);
                 } finally {
-                    i++;
+                    count++;
                 }
             }
-        } catch (NamingException e) {
+            for (int i = 0; i < N_THREADS; i++) {
+                queue.put(ENDSIGNAL);
+            }
+            finishedWorkers.await(60, TimeUnit.MINUTES);
+        } catch (NamingException | InterruptedException e) {
             throw new RuntimeException(e);
         }
     }
@@ -178,6 +192,86 @@ public class UIBMigration {
             }
         } catch (NamingException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    class MigrationWorker implements Runnable {
+
+        @Override
+        public void run() {
+            try {
+                for (; !stop.get(); ) {
+                    final int i = migrationCount.incrementAndGet();
+                    LDAPUserIdentity ldapUserIdentity;
+                    try {
+                        ldapUserIdentity = queue.take();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                        return;
+                    }
+                    try {
+                        if (ENDSIGNAL == ldapUserIdentity) {
+                            System.out.printf("MigrationWorker reached ENDSIGNAL. Thread: %s%n", Thread.currentThread().getName());
+                            return;
+                        }
+                        if (!dryRun) {
+                            String uid = ldapUserIdentity.getUid();
+                            RDBMSUserIdentity existingIdentity = rdbmsLdapUserIdentityDao.get(uid);
+                            if (existingIdentity != null) {
+                                System.out.printf("#%d Skipping USER: %s%n", i, ldapUserIdentity);
+                                continue;
+                            }
+                        }
+                        if (printPasswords) {
+                            System.out.printf("#%d USER: %s ==::== PASS: '%s'%n", i, ldapUserIdentity, ldapUserIdentity.getPassword());
+                        } else {
+                            System.out.printf("#%d USER: %s%n", i, ldapUserIdentity);
+                        }
+                        if (!dryRun) {
+                            RDBMSUserIdentity rdbmsUserIdentity = converter.convertFromLDAPUserIdentity(ldapUserIdentity);
+                            rdbmsLdapUserIdentityDao.create(rdbmsUserIdentity);
+                        }
+                    } catch (Throwable t) {
+                        System.out.printf("Error while converting user: uid=%s, username=%s%n", ldapUserIdentity.getUid(), ldapUserIdentity.getUsername());
+                        t.printStackTrace();
+                        stop.set(true);
+                    }
+                }
+            } finally {
+                finishedWorkers.countDown();
+            }
+        }
+    }
+
+    public static class Mapper implements LdapDataMapper {
+
+        public String firstName(String firstname) {
+            if (firstname.contains("á")) {
+                return firstname.replaceAll("á", "a");
+            }
+            return firstname;
+        }
+
+        @Override
+        public LDAPUserIdentity toLDAPUserIdentity(String uid, String username, String firstname, String lastname, String email, String personRef, String cellPhone, String password) {
+            try {
+                LDAPUserIdentity id = new LDAPUserIdentity(
+                        uid,
+                        username,
+                        firstname,
+                        lastname,
+                        email,
+                        password,
+                        cellPhone,
+                        personRef
+                );
+                return id;
+            } catch (Exception e) {
+                System.out.printf("Unable to create LDAPUserIdentity from attributes. uid='%s', username='%s', firstname='%s', lastname='%s', email='%s', personRef='%s', cellPhone='%s', password='%s'%n",
+                        uid, username, firstname, lastname, email, personRef, cellPhone, "*****");
+                e.printStackTrace();
+                return null;
+            }
         }
     }
 }

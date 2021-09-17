@@ -41,6 +41,7 @@ public class UIBMigrationTest {
     static Main main = null;
 
     static ConstrettoConfiguration configuration;
+    static MigrationLdapUserIdentityDao migrationLdapUserIdentityDao;
     static LdapUserIdentityDao ldapUserIdentityDao;
     static RDBMSLdapUserIdentityDao rdbmsLdapUserIdentityDao;
     static BCryptService bCryptService;
@@ -75,6 +76,7 @@ public class UIBMigrationTest {
         String primaryUsernameAttribute = configuration.evaluateToString("ldap.primary.username.attribute");
         String readonly = configuration.evaluateToString("ldap.primary.readonly");
 
+        migrationLdapUserIdentityDao = new MigrationLdapUserIdentityDao(primaryLdapUrl, primaryAdmPrincipal, primaryAdmCredentials, primaryUidAttribute, primaryUsernameAttribute, new UIBMigration.Mapper());
         ldapUserIdentityDao = new LdapUserIdentityDao(primaryLdapUrl, primaryAdmPrincipal, primaryAdmCredentials, primaryUidAttribute, primaryUsernameAttribute, readonly);
 
         BasicDataSource dataSource = UIBMigration.initBasicDataSource(configuration);
@@ -104,10 +106,10 @@ public class UIBMigrationTest {
             assertTrue(ldapUserIdentityDao.addUserIdentity(ldapUserIdentity));
         }
         Map<String, LDAPUserIdentity> ldapUserByUid = StreamSupport
-                .stream(Spliterators.spliteratorUnknownSize(ldapUserIdentityDao.allUsersWithPassword().iterator(), Spliterator.ORDERED), false)
+                .stream(Spliterators.spliteratorUnknownSize(migrationLdapUserIdentityDao.allUsersWithPassword().iterator(), Spliterator.ORDERED), false)
                 .collect(Collectors.toMap(LDAPUserIdentity::getUid, i -> i));
 
-        UIBMigration uibMigration = new UIBMigration(ldapUserIdentityDao, rdbmsLdapUserIdentityDao, bCryptService, false, Integer.MAX_VALUE, true);
+        UIBMigration uibMigration = new UIBMigration(migrationLdapUserIdentityDao, rdbmsLdapUserIdentityDao, bCryptService, false, Integer.MAX_VALUE, true);
 
         //uibMigration.migrateDryRun();
         uibMigration.migrate();
