@@ -222,6 +222,9 @@ public class UIBMigration {
                         if (!dryRun) {
                             String uid = ldapUserIdentity.getUid();
                             RDBMSUserIdentity existingIdentity = rdbmsLdapUserIdentityDao.get(uid);
+                            if (existingIdentity == null) {
+                                existingIdentity = rdbmsLdapUserIdentityDao.getWithUsername(ldapUserIdentity.getUsername());
+                            }
                             if (existingIdentity != null) {
                                 skippedCount.incrementAndGet();
                                 // System.out.printf("#%d Skipping USER: %s%n", i, ldapUserIdentity);
